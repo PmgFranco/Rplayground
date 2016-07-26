@@ -8,7 +8,6 @@ output: html_document
 ```{r}
 getwd() # print the current working directory - cwd 
 ls()    # list the objects in the current workspace
-#setwd("C:/Users/PMF/Desktop/lm")      # change to mydirectory
 ```
 #Import Libraries
 ```{r}
@@ -17,7 +16,7 @@ library(gridExtra)
 library(randomForest)
 library(caret)
 library(e1071)
-
+library(FSelector)
 ```
 
 #Import Dependencies
@@ -28,11 +27,45 @@ source("R/splitSets.R")
 #Import Data
 ```{r}
 database = read.csv('data/Iris.csv',header = TRUE,stringsAsFactors = F)
+predictor = "Species"
 ```
 
 #Pre Processing
 ```{r}
-database$Species = factor(database$Species)
+database[predictor] = factor(database$Species)
+database["Id"] = NULL
+```
+
+#Data Visualization
+```{r}
+g_scatter = ggplot(aes(x = PetalWidthCm,y = PetalLengthCm,colour=Species),data = database)
+g_scatter = g_scatter + geom_point()
+g_scatter
+```
+
+#Feature Engineering (Generate more features)
+```{r}
+database[predictor] = factor(database$Species)
+database$PetalArea = database$PetalWidthCm * database$PetalWidthCm
+attributes = colnames(database)[colnames(database)!=predictor]
+```
+
+#Feature Selection (Select the features)
+```{r}
+
+result_cfs = cfs(Species ~ ., database)
+f = as.simple.formula(result_cfs,predictor)
+
+weights = information.gain(Species ~ ., database)
+barplot(weights[["attr_importance"]],xlab="Features", ylab="Importance", names.arg=rownames(weights))
+attributes = cutoff.biggest.diff(weights)
+
+f = as.simple.formula(attributes, "Species")
+
+weights <- oneR(Species~., database)
+attributes <- cutoff.biggest.diff(weights)
+f = as.simple.formula(attributes, "Species")
+
 ```
 
 #Section Data
@@ -40,19 +73,15 @@ database$Species = factor(database$Species)
 splitData = splitSets(database,seed=808)
 trainingdata = splitData$trainset
 testdata = splitData$testset
-
-real_outcome = testdata["Species"]
-testdata["Species"] = NULL
+real_outcome = testdata[,"Species"]
 ```
 
 #Create Model
 ```{r}
-model <- train(Species ~ SepalLengthCm + SepalWidthCm + PetalLengthCm + PetalWidthCm,data = trainingdata,method = "rf",trControl = trainControl(method = "cv",number = 5))
+model = train(f,data = trainingdata,method = "rf",trControl = trainControl(method = "cv",number = 5))
 ```
 
-
 #Model Prediction
-
 ```{r}
 predicted_outcome = predict(model, newdata = testdata)
 Accuracy = sum(real_outcome==predicted_outcome)/length(predicted_outcome)*100
